@@ -244,6 +244,11 @@ const extractProjectsFromJSON = (jsonData) => {
     
     console.log(`Found ${uniqueProjects.length} projects`);
     
+    // 临时禁用全文获取功能进行调试
+    console.log('Skipping full content fetching for now - debugging');
+    return uniqueProjects;
+    
+    /* TODO: 重新启用全文获取
     // 为前5个项目获取完整内容（避免过多请求）
     const projectsWithContent = await Promise.all(
       uniqueProjects.slice(0, 5).map(async (project, index) => {
@@ -267,6 +272,7 @@ const extractProjectsFromJSON = (jsonData) => {
     
     console.log(`Processed ${finalProjects.length} projects, ${projectsWithContent.filter(p => p.fullContent).length} with full content`);
     return finalProjects;
+    */
     
   } catch (error) {
     console.error('Error extracting projects from JSON:', error);
