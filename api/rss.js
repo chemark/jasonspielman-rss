@@ -3,23 +3,117 @@ const fetch = require('node-fetch');
 // 缓存变量
 let cachedData = null;
 let cacheTime = null;
-const CACHE_DURATION = 15 * 60 * 1000; // 15分钟
+const CACHE_DURATION = 30 * 60 * 1000; // 30分钟（由于需要获取全文，适当增加缓存时间）
+
+// 获取项目页面的完整内容
+const fetchProjectContent = async (projectUrl) => {
+  try {
+    console.log(`Fetching content for: ${projectUrl}`);
+    
+    const response = await fetch(projectUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RSS-Generator/1.0)'
+      }
+    });
+    
+    if (!response.ok) {
+      console.log(`Failed to fetch ${projectUrl}: ${response.status}`);
+      return null;
+    }
+    
+    const html = await response.text();
+    
+    // 尝试从HTML中提取JSON数据URL
+    const jsonUrlMatch = html.match(/"preload"[^>]*href="([^"]*\/_json\/[^"]*\.json)"/);
+    
+    if (!jsonUrlMatch) {
+      console.log('No JSON URL found in project page');
+      return null;
+    }
+    
+    const jsonUrl = `https://jasonspielman.com${jsonUrlMatch[1]}`;
+    console.log('Found project JSON URL:', jsonUrl);
+    
+    // 获取项目JSON数据
+    const jsonResponse = await fetch(jsonUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RSS-Generator/1.0)'
+      }
+    });
+    
+    if (!jsonResponse.ok) {
+      console.log(`Failed to fetch project JSON: ${jsonResponse.status}`);
+      return null;
+    }
+    
+    const jsonData = await jsonResponse.json();
+    
+    // 从JSON数据中提取文本内容
+    let fullContent = '';
+    const images = [];
+    
+    if (jsonData && jsonData.nodeById) {
+      const nodes = jsonData.nodeById;
+      
+      Object.keys(nodes).forEach(nodeId => {
+        const node = nodes[nodeId];
+        
+        // 提取文本内容
+        if (node.type === 'TEXT' && node.characters) {
+          const text = node.characters.trim();
+          if (text.length > 10) { // 忽略很短的文本
+            fullContent += `<p>${text.replace(/\n/g, '<br>')}</p>\n`;
+          }
+        }
+        
+        // 提取图片
+        if (node.type === 'RECTANGLE' && node.fills && node.fills.length > 0) {
+          const fill = node.fills[0];
+          if (fill.type === 'IMAGE' && fill.imageRef) {
+            images.push(`<img src="https://jasonspielman.com/_images/${fill.imageRef}" alt="Project Image" style="max-width: 100%; height: auto; margin: 10px 0;"/>`);
+          }
+        }
+      });
+    }
+    
+    // 组合完整内容
+    let content = fullContent;
+    if (images.length > 0) {
+      content = images.join('\n') + '\n' + content;
+    }
+    
+    return content || null;
+    
+  } catch (error) {
+    console.error(`Error fetching project content from ${projectUrl}:`, error);
+    return null;
+  }
+};
 
 // RSS模板
 const generateRSSXML = (items) => {
   const now = new Date().toUTCString();
   
-  const rssItems = items.map(item => `
+  const rssItems = items.map(item => {
+    // 如果有完整内容，使用content:encoded标签
+    let contentSection = '';
+    if (item.fullContent) {
+      contentSection = `
+      <content:encoded><![CDATA[${item.fullContent}]]></content:encoded>`;
+    }
+    
+    return `
     <item>
       <title><![CDATA[${item.title}]]></title>
       <link>${item.link}</link>
-      <description><![CDATA[${item.description}]]></description>
+      <description><![CDATA[${item.description}]]></description>${contentSection}
       <pubDate>${item.pubDate}</pubDate>
       <guid isPermaLink="false">${item.guid}</guid>
       <category>Design</category>
       <author>Jason Spielman</author>
     </item>
-  `).join('');
+  `;
+  }).join('');
 
   const rssUrl = process.env.VERCEL_URL 
     ? `https://${process.env.VERCEL_URL}/api/rss` 
@@ -85,7 +179,8 @@ const extractProjectsFromJSON = (jsonData) => {
                     link: `https://jasonspielman.com${action.connectionURL}`,
                     description: `Explore Jason Spielman's latest ${projectName} project - featuring innovative design work, UX research, and creative solutions.`,
                     pubDate: new Date().toUTCString(),
-                    guid: `jasonspielman-project-${nodeId}-${Date.now()}`
+                    guid: `jasonspielman-project-${nodeId}-${Date.now()}`,
+                    projectUrl: `https://jasonspielman.com${action.connectionURL}` // 保存项目URL用于获取全文
                   };
                   
                   projects.push(project);
@@ -148,7 +243,30 @@ const extractProjectsFromJSON = (jsonData) => {
       .slice(0, 10);
     
     console.log(`Found ${uniqueProjects.length} projects`);
-    return uniqueProjects;
+    
+    // 为前5个项目获取完整内容（避免过多请求）
+    const projectsWithContent = await Promise.all(
+      uniqueProjects.slice(0, 5).map(async (project, index) => {
+        if (project.projectUrl) {
+          console.log(`Fetching full content for project ${index + 1}/${Math.min(5, uniqueProjects.length)}`);
+          const fullContent = await fetchProjectContent(project.projectUrl);
+          return {
+            ...project,
+            fullContent: fullContent
+          };
+        }
+        return project;
+      })
+    );
+    
+    // 结合有完整内容的项目和其余项目
+    const finalProjects = [
+      ...projectsWithContent,
+      ...uniqueProjects.slice(5)
+    ];
+    
+    console.log(`Processed ${finalProjects.length} projects, ${projectsWithContent.filter(p => p.fullContent).length} with full content`);
+    return finalProjects;
     
   } catch (error) {
     console.error('Error extracting projects from JSON:', error);
