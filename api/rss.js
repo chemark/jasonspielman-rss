@@ -16,18 +16,35 @@ const generateRSSXML = (items) => {
       <description><![CDATA[${item.description}]]></description>
       <pubDate>${item.pubDate}</pubDate>
       <guid isPermaLink="false">${item.guid}</guid>
+      <category>Design</category>
+      <author>Jason Spielman</author>
     </item>
   `).join('');
 
+  const rssUrl = process.env.VERCEL_URL 
+    ? `https://${process.env.VERCEL_URL}/api/rss` 
+    : 'https://jasonspielman-rss.vercel.app/api/rss';
+
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Jason Spielman - Design Portfolio</title>
     <link>https://jasonspielman.com</link>
-    <description>Latest projects and work from Jason Spielman's design portfolio</description>
+    <description>Latest projects and design work from Jason Spielman's portfolio - featuring UX design, brand identity, and innovative digital experiences</description>
     <language>en-us</language>
     <lastBuildDate>${now}</lastBuildDate>
-    <atom:link href="${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/rss" rel="self" type="application/rss+xml"/>
+    <managingEditor>jason@jasonspielman.com (Jason Spielman)</managingEditor>
+    <webMaster>jason@jasonspielman.com (Jason Spielman)</webMaster>
+    <category>Design</category>
+    <category>UX</category>
+    <category>Portfolio</category>
+    <ttl>900</ttl>
+    <atom:link href="${rssUrl}" rel="self" type="application/rss+xml"/>
+    <image>
+      <url>https://jasonspielman.com/favicon.ico</url>
+      <title>Jason Spielman - Design Portfolio</title>
+      <link>https://jasonspielman.com</link>
+    </image>
     ${rssItems}
   </channel>
 </rss>`;
@@ -44,58 +61,71 @@ const extractProjectsFromJSON = (jsonData) => {
     }
 
     const nodes = jsonData.nodeById;
+    const processedItems = new Set(); // 避免重复项目
     
     // 查找包含项目信息的节点
     Object.keys(nodes).forEach(nodeId => {
       const node = nodes[nodeId];
-      
-      // 查找文本节点，特别是包含项目描述的节点
-      if (node.type === 'TEXT' && node.characters) {
-        const text = node.characters.toLowerCase();
-        
-        // 查找包含项目相关关键词的文本
-        if (text.includes('design') || text.includes('project') || text.includes('led') || 
-            text.includes('developed') || text.includes('identity') || text.includes('brand')) {
-          
-          // 生成项目条目
-          const title = node.characters.length > 100 
-            ? node.characters.substring(0, 97) + '...'
-            : node.characters;
-          
-          const project = {
-            title: title.replace(/\n/g, ' ').trim(),
-            link: 'https://jasonspielman.com',
-            description: node.characters.replace(/\n/g, ' ').trim(),
-            pubDate: new Date().toUTCString(),
-            guid: `jasonspielman-${nodeId}-${Date.now()}`
-          };
-          
-          projects.push(project);
-        }
-      }
       
       // 查找交互节点，可能包含项目链接
       if (node.interactions && Array.isArray(node.interactions)) {
         node.interactions.forEach(interaction => {
           if (interaction.actions && interaction.actions.length > 0) {
             const action = interaction.actions[0];
-            if (action.connectionURL && action.connectionURL.includes('/')) {
-              // 这可能是一个项目页面链接
+            if (action.connectionURL && action.connectionURL.startsWith('/') && 
+                !action.connectionURL.includes('http') && action.connectionURL.length > 1) {
+              // 这是一个内部项目页面链接
               const projectName = action.connectionURL.replace('/', '').replace('-', ' ');
-              if (projectName && projectName.length > 0) {
-                const project = {
-                  title: `${projectName.charAt(0).toUpperCase() + projectName.slice(1)} Project`,
-                  link: `https://jasonspielman.com${action.connectionURL}`,
-                  description: `View the ${projectName} project details and case study.`,
-                  pubDate: new Date().toUTCString(),
-                  guid: `jasonspielman-link-${nodeId}-${Date.now()}`
-                };
-                
-                projects.push(project);
+              if (projectName && projectName.length > 0 && projectName.length < 30) {
+                const projectKey = `project-${projectName}`;
+                if (!processedItems.has(projectKey)) {
+                  processedItems.add(projectKey);
+                  const project = {
+                    title: `${projectName.charAt(0).toUpperCase() + projectName.slice(1)} - New Project`,
+                    link: `https://jasonspielman.com${action.connectionURL}`,
+                    description: `Explore Jason Spielman's latest ${projectName} project - featuring innovative design work, UX research, and creative solutions.`,
+                    pubDate: new Date().toUTCString(),
+                    guid: `jasonspielman-project-${nodeId}-${Date.now()}`
+                  };
+                  
+                  projects.push(project);
+                }
               }
             }
           }
         });
+      }
+      
+      // 查找文本节点，特别是包含项目描述的节点
+      if (node.type === 'TEXT' && node.characters) {
+        const text = node.characters.toLowerCase();
+        const chars = node.characters.trim();
+        
+        // 查找包含项目相关关键词的有意义文本
+        if (chars.length > 30 && chars.length < 200 && 
+            (text.includes('design') || text.includes('developed') || text.includes('led') ||
+             text.includes('identity') || text.includes('brand') || text.includes('ux'))) {
+          
+          const textKey = `text-${chars.substring(0, 20)}`;
+          if (!processedItems.has(textKey)) {
+            processedItems.add(textKey);
+            
+            // 生成项目条目
+            const title = chars.length > 80 
+              ? chars.substring(0, 77) + '...'
+              : chars;
+            
+            const project = {
+              title: title.replace(/\n/g, ' ').trim(),
+              link: 'https://jasonspielman.com',
+              description: chars.replace(/\n/g, ' ').trim(),
+              pubDate: new Date().toUTCString(),
+              guid: `jasonspielman-text-${nodeId}-${Date.now()}`
+            };
+            
+            projects.push(project);
+          }
+        }
       }
     });
     
