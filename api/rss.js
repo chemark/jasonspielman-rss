@@ -185,19 +185,8 @@ const extractProjectsFromJSON = (jsonData) => {
     
     console.log(`Found ${uniqueProjects.length} projects`);
     
-    // 简化的全文获取 - 只为第一个项目获取全文进行测试
-    if (uniqueProjects.length > 0 && uniqueProjects[0].projectUrl) {
-      console.log('Fetching full content for first project only');
-      try {
-        const fullContent = await fetchProjectContent(uniqueProjects[0].projectUrl);
-        if (fullContent) {
-          uniqueProjects[0].fullContent = fullContent;
-          console.log('Successfully added full content to first project');
-        }
-      } catch (error) {
-        console.error('Error fetching full content:', error);
-      }
-    }
+    // 完全禁用全文获取功能，优先保证基本功能正常
+    console.log('Full content fetching disabled - basic RSS feed only');
     
     return uniqueProjects;
     
