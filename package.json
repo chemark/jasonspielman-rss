@@ -1,0 +1,20 @@
+{
+  "name": "jasonspielman-rss",
+  "version": "1.0.0",
+  "description": "RSS generator for jasonspielman.com",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "@vercel/node": "^2.15.9"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
