@@ -234,11 +234,16 @@ export default async function handler(req, res) {
   try {
     // 设置CORS头
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    // 只允许GET请求
-    if (req.method !== 'GET') {
+    // 处理OPTIONS预检请求
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    // 只允许GET和HEAD请求
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
     
@@ -248,6 +253,13 @@ export default async function handler(req, res) {
       console.log('Using cached data');
       res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
       res.setHeader('Cache-Control', 'public, max-age=900'); // 15分钟缓存
+      res.setHeader('Content-Length', Buffer.byteLength(cachedData, 'utf-8'));
+      
+      // 对于HEAD请求，只返回头信息
+      if (req.method === 'HEAD') {
+        return res.status(200).end();
+      }
+      
       return res.status(200).send(cachedData);
     }
     
@@ -262,6 +274,12 @@ export default async function handler(req, res) {
     // 设置响应头
     res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=900'); // 15分钟缓存
+    res.setHeader('Content-Length', Buffer.byteLength(rssXML, 'utf-8'));
+    
+    // 对于HEAD请求，只返回头信息
+    if (req.method === 'HEAD') {
+      return res.status(200).end();
+    }
     
     return res.status(200).send(rssXML);
     
@@ -278,6 +296,13 @@ export default async function handler(req, res) {
     }]);
     
     res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
+    res.setHeader('Content-Length', Buffer.byteLength(errorRSS, 'utf-8'));
+    
+    // 对于HEAD请求，只返回头信息
+    if (req.method === 'HEAD') {
+      return res.status(500).end();
+    }
+    
     return res.status(500).send(errorRSS);
   }
 }
